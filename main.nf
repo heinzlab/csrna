@@ -78,8 +78,9 @@ if (params.list_genomes){
 
 // Reference path configuration
 params.gtf = params.genome ? params.genomes[ params.genome ].gtf ?: false : false
-params.bwa_index = params.genome ? params.genomes[ params.genome ].bwa ?: false : false
 params.fasta = params.genome ? params.genomes[ params.genome ].fasta ?: false : false
+params.bt2index = params.genome ? params.genomes[ params.genome ].bowtie2 ?: false : false
+params.bt2indices = null
 params.adapters = params.genome ? params.genomes[ params.genome ].adapters ?: false: false
 params.chrom_sizes = params.genome ? params.genomes[ params.genome ].chrom_sizes ?: false : false
 
