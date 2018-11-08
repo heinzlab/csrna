@@ -25,8 +25,6 @@ def helpMessage() {
 
 	Options:
 	 --singleEnd                   Specifies that the input is single end reads.
-	 --allow_multi_align           Secondary alignments and unmapped reads are also reported in addition to primary alignments.
-	 --extendReadsLen [int]        Length to extend reads. (Default: 100)
 
 	Trimming options:
 	 --length [int]                Discard reads that became shorter than length [int] because of either quality or adapter trimming. Default: 18
@@ -97,13 +95,12 @@ if( params.gtf ){
 	gtf = file(params.gtf)
 	if( !gtf.exists() ) exit 1, "GTF file not found: ${params.gtf}"
 }
-if( params.bwa_index ){
-    bwa_index = Channel
-        .fromPath(params.bwa_index)
-        .ifEmpty { exit 1, "BWA index not found: ${params.bwa_index}" }
-} else if ( params.fasta ){
-    fasta = file(params.fasta)
-    if( !fasta.exists() ) exit 1, "Fasta file not found: ${params.fasta}"
+if( params.bt2index ){
+	bt2_index = file("${params.bt2index}.fa")
+	bt2_indices = Channel.fromPath( "${params.bt2index}*.bt2" ).toList()
+	if( !bt2_index.exists() ) exit 1, "Reference genome Bowtie 2 not found: ${params.bt2index}"
+} else if( params.bt2indices ){
+	bt2_indices = Channel.from(params.readPaths).map{ file(it) }.toList()
 } else {
     exit 1, "No reference genome specified!"
 }
@@ -145,7 +142,7 @@ summary['Reads']               = params.reads
 summary['Genome']              = params.genome
 summary['Data Type']           = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Trim Min Length']     = params.length
-if(params.bwa_index)           summary['BWA Index'] = params.bwa_index
+if(params.bt2index)            summary['Bowtie2 Index'] = params.bt2index
 else if(params.fasta)          summary['Fasta Ref'] = params.fasta
 if(params.gtf)                 summary['GTF Annotation'] = params.gtf
 summary['Adapters']            = params.adapters
@@ -160,29 +157,6 @@ summary['Current path']        = "$PWD"
 summary['Script dir']          = workflow.projectDir
 log.info summary.collect { k,v -> "${k.padRight(15)}: $v" }.join("\n")
 log.info "==========================================="
-
-/*
- * PREPROCESSING - Build BWA index
- */
-if(!params.bwa_index && fasta){
-    process makeBWAindex {
-        tag fasta
-        publishDir path: { params.saveReference ? "${params.outdir}/reference_genome" : params.outdir },
-                   saveAs: { params.saveReference ? it : null }, mode: 'copy'
-
-        input:
-        file fasta from fasta
-
-        output:
-        file "BWAIndex" into bwa_index
-
-        script:
-        """
-        bwa index -a bwtsw $fasta
-        mkdir BWAIndex && mv ${fasta}* BWAIndex
-        """
-    }
-}
 
 /*
  * STEP 1 - FastQC
@@ -219,7 +193,7 @@ process bbduk {
     file adapters from adapters
 
     output:
-    file '*.gz' into trimmed_reads
+    file '*.gz' into trimmed_reads, trimmed_reads_insersize
 
     script:
     tg_length = "--length ${params.length}"
@@ -237,27 +211,98 @@ process bbduk {
 }
 
 /*
- * STEP 3.1 - align with bwa
+ * STEP 2.1 - Insertsize
  */
-process bwa {
-    tag "$prefix"
-    publishDir path: { params.saveAlignedIntermediates ? "${params.outdir}/bwa" : params.outdir }, mode: 'copy',
-               saveAs: {filename -> params.saveAlignedIntermediates ? filename : null }
+
+process insertsize {
+    tag "$reads"
+    publishDir "${params.outdir}/bbduk/insertsize", mode: 'copy'
 
     input:
-    file reads from trimmed_reads
-    file index from bwa_index.first()
+    file reads from trimmed_reads_insertsize
 
     output:
-    file '*.bam' into bwa_bam
+    file '*.insertsize' into insertsize_results
 
     script:
-    prefix = reads[0].toString() - ~/(.R1)?(_1)?(_R1)?(_trimmed)?(_val_1)?(\.fq)?(\.fastq)?(\.gz)?$/
-    filtering = params.allow_multi_align ? '' : "| samtools view -b -q 1 -F 4 -F 256"
+    prefix = reads.toString() - ~/(.R1)?(_R1)?(_trimmed)?(\.fq)?(\.fastq)?(\.gz)?$/
     """
-    bwa mem -t ${task.cpus} -M ${index}/genome.fa $reads | samtools view -bT $index - $filtering > ${prefix}.bam
+    awk 'NR%4 == 2 {lengths[length(\$0)]++} END {for (l in lengths) {print l, lengths[l]}}' <(zcat $reads) >${prefix}.insertsize
     """
 }
+
+/*
+ * STEP 3 and 3.1 IF A GENOME SPECIFIED ONLY!
+ */
+if( params.gtf && params.bt2index) {
+
+    /*
+     * STEP 3 - Bowtie 2 against reference genome
+     */
+    process bowtie2 {
+        tag "$reads"
+        publishDir path: { params.saveAlignedIntermediates ? "${params.outdir}/bowtie2" : params.outdir }, mode: 'copy',
+               saveAs: {filename -> params.saveAlignedIntermediates ? filename : null }
+
+        input:
+        file reads from trimmed_reads_bowtie2
+        file bt2_indices
+
+        output:
+        file '*.bowtie2.bam' into bowtie2_bam, bowtie2_bam_ngi
+
+        script:
+        index_base = bt2_indices[0].toString()  - ~/\.\d+\.bt2/
+        prefix = reads.toString() - ~/(.R1)?(_R1)?(_trimmed)?(\.fq)?(\.fastq)?(\.gz)?$/
+        if (params.singleEnd) {
+            """
+            bowtie2 \\
+                -x $index_base \\
+                -U $reads \\
+                --very-sensitive \\
+                -p ${task.cpus} \\
+                -t \\
+                | samtools view -bT $index_base - | samtools sort - > ${prefix}.bowtie2.bam
+            """
+        } else {
+            """
+            bowtie2 \\
+                -x $index_base \\
+                -1 $reads[0] \\
+                -2 $reads[1] \\
+                --very-sensitive \\
+                -p ${task.cpus} \\
+                -t \\
+                | samtools view -bT $index_base - | samtools sort - > ${prefix}.bowtie2.bam
+            """
+        }
+    }
+
+/*
+     * STEP 3.1 - NGI-Visualizations of Bowtie 2 alignment statistics
+     */
+    process ngi_visualizations {
+        tag "$bowtie2_bam"
+        publishDir "${params.outdir}/bowtie2/ngi_visualizations", mode: 'copy'
+
+        input:
+        file gtf from gtf
+        file bowtie2_bam_ngi
+
+        output:
+        file '*.{png,pdf}' into bowtie2_ngi_visualizations
+
+        script:
+        // Note! ngi_visualizations needs to be installed!
+        // See https://github.com/NationalGenomicsInfrastructure/ngi_visualizations
+        """
+        #!/usr/bin/env python
+        from ngi_visualizations.biotypes import count_biotypes
+        count_biotypes.main('$gtf','$bowtie2_bam')
+        """
+    }
+}
+
 
 /*
  * STEP 3.2 - post-alignment processing
@@ -265,18 +310,18 @@ process bwa {
 
 process samtools {
     tag "${bam.baseName}"
-    publishDir path: "${params.outdir}/bwa", mode: 'copy',
+    publishDir path: "${params.outdir}/bowtie2", mode: 'copy',
                saveAs: { filename ->
                    if (filename.indexOf(".stats.txt") > 0) "stats/$filename"
                    else params.saveAlignedIntermediates ? filename : null
                }
 
     input:
-    file bam from bwa_bam
+    file bam from bowtie2_bam
 
     output:
     file '*.sorted.bam' into bam_picard, bam_for_mapped
-    file '*.sorted.bam.bai' into bwa_bai, bai_for_mapped
+    file '*.sorted.bam.bai' into bowtie2_bai, bai_for_mapped
     file '*.sorted.bed' into bed_total
     file '*.stats.txt' into samtools_stats
 
@@ -294,7 +339,7 @@ process samtools {
  * STEP 3.3 - Statistics about mapped and unmapped reads against ref genome
  */
 
-process bwa_mapped {
+process bowtie2_mapped {
     tag "${input_files[0].baseName}"
     publishDir "${params.outdir}/bwa/mapped", mode: 'copy'
 
@@ -326,8 +371,8 @@ process picard {
     file bam from bam_picard
 
     output:
-    file '*.dedup.sorted.bam' into bam_dedup_ssp, bam_dedup_ngsplot, bam_dedup_deepTools, bam_dedup_macs, bam_dedup_saturation
-    file '*.dedup.sorted.bam.bai' into bai_dedup_deepTools, bai_dedup_ngsplot, bai_dedup_macs, bai_dedup_ssp
+    file '*.dedup.sorted.bam' into bam_dedup_ssp, bam_dedup_deepTools
+    file '*.dedup.sorted.bam.bai' into bai_dedup_deepTools, bai_dedup_ssp
     file '*.dedup.sorted.bed' into bed_dedup
     file '*.picardDupMetrics.txt' into picard_reports
 
