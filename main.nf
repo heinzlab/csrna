@@ -194,7 +194,7 @@ process bbduk {
     file adapters from adapters
 
     output:
-    file '*.gz' into trimmed_reads, trimmed_reads_insertsize
+    file '*.gz' into trimmed_reads, trimmed_reads_insertsize, trimmed_reads_bowtie2
 
     script:
     tg_length = "--length ${params.length}"
