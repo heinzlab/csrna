@@ -3,7 +3,7 @@ From: continuumio/miniconda3
 
 %labels
     MAINTAINER Carlos Guzman <cag104@eng.ucsd.edu>
-    DESCRIPTION Container image containing all requirements for the adapted heinzlab/chip-seq-pipeline
+    DESCRIPTION Container image containing all requirements for the adapted heinzlab/csrna
     VERSION 0.1dev
 
 %files
