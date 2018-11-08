@@ -38,7 +38,6 @@ def helpMessage() {
 	References:
 	 --saveReference               Save the generated reference files the the Results directory.
 	 --saveAlignedIntermediates    Save the intermediate BAM files from the Alignment step prior to sorting - not done by default.
-	 --fasta                       Path to fasta reference.
 	""".stripIndent()
 }
 
