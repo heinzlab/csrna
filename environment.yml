@@ -1,6 +1,6 @@
 # You can use this file to create a conda environment for this pipeline:
 #   conda env create -f environment.yml
-name: chipseq-0.1dev
+name: csrnaseq-0.1dev
 channels:
   - bioconda
   - conda-forge
@@ -18,3 +18,5 @@ dependencies:
   - deeptools=3.0.2
   - picard=2.18.7
   - bedtools=2.27.1
+  - pip:
+     - "--editable=git+https://github.com/NationalGenomicsInfrastructure/ngi_visualizations.git#egg=ngi_visualizations"
