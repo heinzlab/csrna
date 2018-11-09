@@ -10,7 +10,7 @@ From: continuumio/miniconda3
     environment.yml /
 
 %environment
-	PATH=/opt/conda/envs/chipseq-0.1dev/bin:$PATH
+	PATH=/opt/conda/envs/csrna-0.1dev/bin:$PATH
 	export PATH
 
 %post
