@@ -23,4 +23,4 @@ From: continuumio/miniconda3
     git clone https://github.com/rnakato/SSP.git
     cd SSP
     make
-    mv bin/ssp /opt/conda/envs/chipseq-0.1dev/bin
+    mv bin/ssp /opt/conda/envs/csrna-0.1dev/bin
