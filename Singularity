@@ -4,7 +4,7 @@ From: continuumio/miniconda3
 %labels
     MAINTAINER Carlos Guzman <cag104@eng.ucsd.edu>
     DESCRIPTION Container image containing all requirements for the adapted heinzlab/csrna
-    VERSION 0.1dev
+    VERSION 0.1dev (Updated: 11/9/18)
 
 %files
     environment.yml /
