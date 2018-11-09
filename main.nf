@@ -287,7 +287,7 @@ if( params.gtf && params.bt2index) {
 
         input:
         file gtf from gtf
-        file bowtie2_bam_ngi
+        file bowtie2_bam from bowtie2_bam_ngi
 
         output:
         file '*.{png,pdf}' into bowtie2_ngi_visualizations
