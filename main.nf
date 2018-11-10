@@ -341,7 +341,7 @@ process samtools {
 
 process bowtie2_mapped {
     tag "${input_files[0].baseName}"
-    publishDir "${params.outdir}/bwa/mapped", mode: 'copy'
+    publishDir "${params.outdir}/bowtie2/mapped", mode: 'copy'
 
     input:
     file input_files from bam_for_mapped.collect()
@@ -396,7 +396,7 @@ process picard {
         INPUT=$bam \\
         OUTPUT=${prefix}.dedup.bam \\
         ASSUME_SORTED=true \\
-        REMOVE_DUPLICATES=true \\
+        REMOVE_DUPLICATES=false \\
         METRICS_FILE=${prefix}.picardDupMetrics.txt \\
         VALIDATION_STRINGENCY=LENIENT \\
         PROGRAM_RECORD_ID='null'
